@@ -1,0 +1,75 @@
+Task 1: AI Problem Definition & Success Criteria
+AI-Powered Triage & Summarization Assistant for IT Help Desk Tickets
+1. Problem Statement
+A 60-person company runs an internal IT help desk that receives 30–50 tickets per day (password resets, software bugs, hardware requests, access issues, network problems). A single IT support agent triages every incoming ticket by reading it, deciding its category and priority, and writing a short note for the queue. This manual triage takes 3–5 minutes per ticket and delays response to genuinely urgent issues when ticket volume spikes.
+The proposed system is a narrow, well-scoped AI assistant that (a) classifies each incoming ticket into a fixed category and priority level, and (b) produces a 2–3 sentence summary an agent can read in seconds. It does not resolve tickets, take autonomous action, or replace the human agent — it accelerates the triage step and leaves the final decision with a person.
+2. Use Case Type
+Hybrid, narrow-scope task combining two well-understood AI capabilities:
+•	Classification: assign each ticket a category (Hardware, Software, Access/Account, Network, Other) and a priority (Urgent, High, Normal, Low).
+•	Summarization: condense the ticket body into a short, actionable summary for the assigned agent.
+Both tasks operate over a single ticket at a time (no cross-ticket reasoning, no multi-turn dialogue, no external tool use), which keeps the scope deliberately narrow and testable.
+3. Target User
+Primary user:  IT Support Agent(s) who triage incoming help desk tickets
+Secondary user:  IT Manager, who reviews weekly ticket volume and SLA reports
+User goal:  Spend less time reading and categorizing tickets, and never miss a genuinely urgent issue
+Where it's used:  Embedded as a step in the existing ticketing tool (e.g., a sidebar panel or auto-filled fields when a ticket is opened)
+4. Data Source
+Historical tickets exported from the company's existing help desk system (e.g., Freshservice, Zendesk, or a shared mailbox/spreadsheet log), covering the past 12 months. This gives a realistic, in-domain dataset rather than a generic public dataset, and includes the human-assigned category/priority labels needed for training and evaluation.
+Estimated volume:  ~9,000–12,000 historical tickets (30–50/day × ~300 working days)
+Format:  CSV/JSON export from the ticketing system, or a de-identified spreadsheet
+Key fields used:
+Field	Description	Used For
+ticket_id	Unique identifier from the help desk system	Traceability / logging
+subject	One-line subject entered by the employee	Input to classifier & summarizer
+body_text	Free-text description of the issue	Primary input to classifier & summarizer
+submitted_by / department	Employee name (pseudonymized) and department	Routing context only – not used as a prediction feature
+timestamp	Date/time the ticket was submitted	SLA and latency tracking, not a model feature
+attachments (optional)	Screenshots or logs, if any	Out of scope for v1 – text only
+ground_truth_category / priority	Historical label assigned by a human agent (training/eval only)	Model training and evaluation, never shown to end users
+
+Personally identifying details (employee names, email addresses, ticket free text that references sensitive personal data) are pseudonymized or redacted before the data is used for model development, per the constraints below.
+5. Constraints
+5.1 Technical
+•	Fixed, closed label set (5 categories × 4 priority levels) — no open-ended category creation.
+•	Text-only input for v1; attachments/screenshots are out of scope.
+•	Must run on ticket volumes of 30–50/day without a dedicated ML infrastructure team — favors a lightweight model or API call over a custom-trained large model.
+•	Response latency under 5 seconds so it fits inline in the agent's existing workflow.
+5.2 Data & Privacy
+•	No customer or employee PII may leave the company's approved environment; pseudonymize names/emails before any external API call.
+•	Historical tickets may contain sensitive info (e.g., HR-adjacent access requests) — these are filtered from the training/eval set.
+•	Data retention limited to what's needed for evaluation; raw exports deleted after model validation is complete.
+5.3 Business & Organizational
+•	Budget: no dedicated data-science hire; project must be buildable by one technical person part-time.
+•	The tool must never auto-close or auto-resolve a ticket — human agent retains final authority (low-autonomy design).
+•	Must integrate with the existing ticketing tool rather than requiring agents to use a second system.
+5.4 Ethical / Fairness
+•	Priority classification must be audited for bias across departments (e.g., not systematically down-ranking non-technical departments' tickets).
+•	Agents must be able to override any classification or summary with one click, and overrides are logged for retraining.
+6. Success Criteria & Evaluation Approach
+Success is measured against a held-out evaluation set (tickets not used for prompt/model development) plus a live pilot period. The table below is the acceptance bar for moving from pilot to full rollout.
+Metric	Target	How Measured	Why It Matters
+Classification accuracy (category label)	≥ 85% agreement with human-assigned label	Compare model label vs. analyst label on a held-out set of 150 labeled tickets	Wrong category routes the ticket to the wrong queue and delays resolution
+Priority accuracy (Urgent / High / Normal / Low)	≥ 90% agreement, with 0 “Urgent” tickets mis-classified as Low	Confusion matrix on held-out set; manual review of any Urgent→Low errors	Missing a true urgent ticket has outsized business cost
+Summary usefulness	≥ 4 / 5 average rating	5 support agents rate 40 summaries each on a 1–5 Likert scale for accuracy and completeness	Summary must let an agent act without re-reading the full thread
+Summary factual consistency	0 hallucinated facts in a 50-ticket audit	Manual side-by-side check of summary claims against source ticket text	Fabricated details (wrong customer, wrong system) erode trust and cause errors
+Latency	≤ 5 seconds per ticket	Timestamp logging from request to response, p95 measured over 200 tickets	Must not slow down the intake workflow
+Agent time saved	≥ 30% reduction in average triage time per ticket	Time-motion comparison: 2 weeks pre-launch baseline vs. 2 weeks post-launch	Primary business justification for the project
+Adoption	≥ 70% of tickets processed through the tool (not bypassed)	System usage logs over first 30 days	Low adoption signals a trust or usability problem regardless of accuracy
+
+6.1 Evaluation Method
+•	Offline evaluation: 150–200 historical tickets, manually labeled by the IT manager, held out from any prompt design or fine-tuning.
+•	Human-rated evaluation: 5 support agents blind-review a sample of AI-generated summaries alongside the original ticket text and score them 1–5 on accuracy and usefulness.
+•	Pilot A/B period: 2 weeks running the tool alongside normal manual triage (shadow mode), followed by 2 weeks of live use, comparing triage time, misroute rate, and SLA compliance before vs. after.
+•	Error review: every Urgent-priority misclassification and every summary flagged as inaccurate is manually reviewed weekly during the pilot.
+6.2 Go / No-Go Threshold
+The system moves from pilot to full production only if all of: classification accuracy ≥ 85%, zero Urgent→Low priority misses, summary usefulness ≥ 4/5 average, and no unresolved PII/privacy issue identified during the pilot.
+7. Out of Scope (v1)
+•	Automatically resolving, closing, or replying to tickets.
+•	Handling attachments, screenshots, or logs as input.
+•	Multi-language support (English-only tickets for v1).
+•	Cross-ticket trend detection or root-cause analysis.
+8. Key Risks & Mitigations
+•	Risk: Model misses a true urgent ticket → Mitigation: conservative priority thresholds, human review of all “Urgent” and borderline cases during pilot, one-click override.
+•	Risk: Summary hallucinates details not in the ticket → Mitigation: constrain the summarizer to extractive-leaning prompts, factual-consistency audit before rollout.
+•	Risk: Low agent adoption / trust → Mitigation: shadow-mode pilot so agents see accuracy before it affects their workflow, visible override control, weekly feedback session.
+•	Risk: PII exposure via external API calls → Mitigation: pseudonymization step before any data leaves the internal environment, documented data-handling review.
